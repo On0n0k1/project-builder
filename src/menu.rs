@@ -1,25 +1,24 @@
 use inquire::Select;
-use serde::Deserialize;
-use std::{default::Default, str::FromStr};
-use strum::VariantNames;
+use std::default::Default;
 
-use crate::projects::{Database, Deployment, Language, Platform, Projects, SearchParameter};
+use crate::{
+    error::Error,
+    projects::{Projects, SearchParameter, SearchTree, Topic},
+};
 
 const CLEAR_STRING: &str = "(clear)";
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Menu {
     parameters: SearchParameter,
-    projects: Projects,
+    tree: SearchTree,
 }
 
 impl Menu {
-    pub fn new(projects: Projects) -> Self {
+    pub fn new(projects: Projects) -> Result<Self, Error> {
         let parameters = SearchParameter::default();
-        Self {
-            parameters,
-            projects,
-        }
+        let tree = SearchTree::new(projects.projects)?;
+        Ok(Self { parameters, tree })
     }
 }
 
@@ -32,24 +31,25 @@ impl MenuExt for Menu {
         &mut self.parameters
     }
 
-    fn projects(&self) -> &Projects {
-        &self.projects
+    fn tree(&self) -> &SearchTree {
+        &self.tree
     }
 }
 
 pub const OPTIONS: [&str; 5] = ["Source", "Platform", "Language", "Database", "Deployment"];
 
-fn parameters_update<A: FromStr + VariantNames>(parameter_name: &str) -> Option<A>
-where
-    <A as std::str::FromStr>::Err: std::fmt::Debug,
-{
-    let mut options: Vec<String> = A::VARIANTS
-        .iter()
-        .map(|option| option.to_string())
+fn parameters_update(
+    topic: &Topic,
+    tree: &SearchTree,
+    parameter: SearchParameter,
+) -> Option<String> {
+    let mut options: Vec<String> = tree
+        .retrieve_topic_options(topic, parameter)
+        .into_iter()
         .collect();
-    options.push("(clear)".to_string());
+    options.push(CLEAR_STRING.to_string());
     let selected: String = Select::new(
-        &format!("Select which type of {parameter_name} to filter: "),
+        &format!("Select which type of {topic:?} to filter: "),
         options,
     )
     .prompt()
@@ -57,19 +57,18 @@ where
     if selected == CLEAR_STRING {
         return None;
     }
-    let result: A = A::from_str(&selected).unwrap();
-    Some(result)
+    Some(selected)
 }
 
 pub trait MenuExt {
     fn parameters(&self) -> &SearchParameter;
     fn parameters_mut(&mut self) -> &mut SearchParameter;
-    fn projects(&self) -> &Projects;
+    fn tree(&self) -> &SearchTree;
 
     fn sources(&self) -> Vec<String> {
-        let mut sources: Vec<String> = Vec::with_capacity(self.projects().projects.len());
-        self.projects()
-            .projects
+        let projects = self.tree().get_projects();
+        let mut sources: Vec<String> = Vec::with_capacity(projects.len());
+        projects
             .iter()
             .for_each(|project| sources.push(project.source.clone()));
         sources
@@ -116,36 +115,39 @@ pub trait MenuExt {
             options.push(option);
 
             let search_parameter: &SearchParameter = self.parameters();
-            for project in &self.projects().projects {
-                if *search_parameter == *project {
-                    options.push(project.source.clone());
-                    continue;
-                }
-                println!("Comparison failed: \n{search_parameter:?}\nvs\n{project:?}\n");
-            }
+            self.tree()
+                .search(search_parameter)
+                .iter()
+                .for_each(|project| options.push(project.source.clone()));
+
             let selected = Select::new("Select a project or Filter Search", options)
                 .prompt()
                 .unwrap();
+            let tree = self.tree();
             if selected.starts_with("Database:") {
-                let database: Option<Database> = parameters_update::<Database>("Database");
+                let database: Option<String> =
+                    parameters_update(&Topic::Database, tree, search_parameter.clone());
                 self.parameters_mut().database = database;
                 continue;
             }
 
             if selected.starts_with("Deployment:") {
-                let deployment: Option<Deployment> = parameters_update::<Deployment>("Deployment");
+                let deployment: Option<String> =
+                    parameters_update(&Topic::Deployment, tree, search_parameter.clone());
                 self.parameters_mut().deployment = deployment;
                 continue;
             }
 
             if selected.starts_with("Language:") {
-                let language: Option<Language> = parameters_update::<Language>("Language");
+                let language: Option<String> =
+                    parameters_update(&Topic::Language, tree, search_parameter.clone());
                 self.parameters_mut().language = language;
                 continue;
             }
 
             if selected.starts_with("Platform:") {
-                let platform: Option<Platform> = parameters_update::<Platform>("Platform");
+                let platform: Option<String> =
+                    parameters_update(&Topic::Platform, tree, search_parameter.clone());
                 self.parameters_mut().platform = platform;
                 continue;
             }

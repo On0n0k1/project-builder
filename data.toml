@@ -1,24 +1,24 @@
 [[projects]]
 source = "https://github.com/example/project1"
 platform = "Aws"
-language = { Rust = "Rocket" }
+language = "Rust"
 database = "PostgreSQL"
 deployment = "DockerCompose"
 
 [[projects]]
 source = "https://github.com/example/project2"
 platform = "Vercel"
-language = { Javascript = "React" }
+language = "Javascript"
 database = "MySql"
 deployment = "Terraform"
 
 [[projects]]
 source = "https://github.com/example/project3"
-language = { CSharp = {} }
+language = "CSharp"
 database = "DynamoDB"
 
 [[projects]]
 source = "https://github.com/example/project4"
 platform = "GithubPages"
-language = { Python = {} }
+language = "Python"
 deployment = "Kubernetes"
